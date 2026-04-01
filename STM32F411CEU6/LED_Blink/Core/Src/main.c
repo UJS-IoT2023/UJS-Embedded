@@ -50,14 +50,44 @@ TIM_HandleTypeDef htim5;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM5_Init(void);
-
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#define LED0_PIN GPIO_PIN_0
+#define LED1_PIN GPIO_PIN_1
 
+void Set_LED_State(uint8_t state) {
+  HAL_GPIO_WritePin(GPIOA, LED0_PIN, (state & 0b10) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, LED1_PIN, (state & 0b01) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+void LED_Blink(uint8_t state, uint8_t times) {
+  while (times--) {
+    Set_LED_State(state);
+    HAL_Delay(500);
+    Set_LED_State(0);
+    HAL_Delay(500);
+  }
+}
+
+void LED_RightToLeft(uint8_t times) {
+  while (times--) {
+    Set_LED_State(0b01); HAL_Delay(500);
+    Set_LED_State(0b10); HAL_Delay(500);
+    Set_LED_State(0b00); HAL_Delay(500);
+  }
+}
+
+void LED_LeftToRight(uint8_t times) {
+  while (times--) {
+    Set_LED_State(0b10); HAL_Delay(500);
+    Set_LED_State(0b01); HAL_Delay(500);
+    Set_LED_State(0b00); HAL_Delay(500);
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -91,31 +121,32 @@ int main(void)
   MX_GPIO_Init();
   MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
-  HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_1);
+
+  // HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_1);
+  // uint16_t pwm_val = 0;
+  // uint8_t direction = 1;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint16_t pwm_val = 0;
-  uint8_t direction = 1;
-
   while (1)
   {
-    // HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-    // HAL_Delay(500);
-    __HAL_TIM_SET_COMPARE(&htim5, TIM_CHANNEL_1, pwm_val);
-    if (direction) {
-      pwm_val += 50;
-    } else {
-      pwm_val -= 50;
+    // From one side to another side
+    LED_RightToLeft(3);
+    LED_LeftToRight(3);
+
+    // Blink
+    LED_Blink(0b10,2);
+    LED_Blink(0b01,3);
+    LED_Blink(0b11,4);
+
+    // Display number by binary LED
+    for (uint8_t i = 0; i < 4; i++) {
+      Set_LED_State(i);
+      HAL_Delay(1500);
     }
-    if (pwm_val >= 1000) {
-      direction = 0;
-    }
-    if (pwm_val <= 0) {
-      direction = 1;
-    }
-    HAL_Delay(20);
+    Set_LED_State(0);
+    HAL_Delay(1500);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -178,7 +209,6 @@ static void MX_TIM5_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
 
   /* USER CODE BEGIN TIM5_Init 1 */
 
@@ -198,28 +228,15 @@ static void MX_TIM5_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_Init(&htim5) != HAL_OK)
-  {
-    Error_Handler();
-  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim5, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim5, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
   /* USER CODE BEGIN TIM5_Init 2 */
 
   /* USER CODE END TIM5_Init 2 */
-  HAL_TIM_MspPostInit(&htim5);
 
 }
 
@@ -243,12 +260,22 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0|GPIO_PIN_1, GPIO_PIN_RESET);
+
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PA0 PA1 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
