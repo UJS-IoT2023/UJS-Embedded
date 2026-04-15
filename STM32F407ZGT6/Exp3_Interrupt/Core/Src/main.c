@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "key.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -40,23 +40,38 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-TIM_HandleTypeDef htim14;
+UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
+typedef enum {
+  IDLE, S0, S1_1, S1_2, S1_3, S2_1, S2_2
+} KeyState_t;
 
+KeyState_t currentState = IDLE;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_TIM14_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#include <stdio.h>
 
+#ifdef __GNUC__
+#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#else
+#define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#endif
+
+PUTCHAR_PROTOTYPE {
+  HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 0xFFFF);
+  return ch;
+}
 /* USER CODE END 0 */
 
 /**
@@ -88,15 +103,8 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_TIM14_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  // Enable the timer and set pwm to max to disable the LED0
-  HAL_TIM_PWM_Start(&htim14, TIM_CHANNEL_1);
-  __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 500);
-
-  uint8_t breathe_mode = 0;
-  uint16_t pwm_val = 0;
-  uint8_t direction = 1;
 
   /* USER CODE END 2 */
 
@@ -104,27 +112,6 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    uint8_t key = KEY_Scan(0);
-
-    if (key == KEY0_PRES) {
-      breathe_mode = 1;
-    }
-    else if (key == KEY1_PRES) {
-      breathe_mode = 0;
-      __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 500);
-    }
-
-    if (breathe_mode)
-    {
-      if (direction) pwm_val += 5; else pwm_val -= 5;
-
-      if (pwm_val >= 490) direction = 0;
-      if (pwm_val <= 10)  direction = 1;
-
-      __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, pwm_val);
-
-      HAL_Delay(2);
-    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -149,11 +136,12 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLM = 4;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+  RCC_OscInitStruct.PLL.PLLM = 8;
   RCC_OscInitStruct.PLL.PLLN = 168;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 4;
@@ -178,48 +166,35 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief TIM14 Initialization Function
+  * @brief USART1 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_TIM14_Init(void)
+static void MX_USART1_UART_Init(void)
 {
 
-  /* USER CODE BEGIN TIM14_Init 0 */
+  /* USER CODE BEGIN USART1_Init 0 */
 
-  /* USER CODE END TIM14_Init 0 */
+  /* USER CODE END USART1_Init 0 */
 
-  TIM_OC_InitTypeDef sConfigOC = {0};
+  /* USER CODE BEGIN USART1_Init 1 */
 
-  /* USER CODE BEGIN TIM14_Init 1 */
-
-  /* USER CODE END TIM14_Init 1 */
-  htim14.Instance = TIM14;
-  htim14.Init.Prescaler = 83;
-  htim14.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim14.Init.Period = 499;
-  htim14.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim14.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim14) != HAL_OK)
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_Init(&htim14) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim14, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM14_Init 2 */
+  /* USER CODE BEGIN USART1_Init 2 */
 
-  /* USER CODE END TIM14_Init 2 */
-  HAL_TIM_MspPostInit(&htim14);
+  /* USER CODE END USART1_Init 2 */
 
 }
 
@@ -238,20 +213,42 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOF_CLK_ENABLE();
-  __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOF, LED0_Pin|LED1_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pins : KEY2_Pin KEY1_Pin KEY0_Pin */
   GPIO_InitStruct.Pin = KEY2_Pin|KEY1_Pin|KEY0_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : LED0_Pin LED1_Pin */
+  GPIO_InitStruct.Pin = LED0_Pin|LED1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
+
   /*Configure GPIO pin : KEY_UP_Pin */
   GPIO_InitStruct.Pin = KEY_UP_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(KEY_UP_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI2_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -259,7 +256,63 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+  static uint32_t last_tick = 0;
+  if (HAL_GetTick() - last_tick < 200) return;
+  last_tick = HAL_GetTick();
 
+  int key = -1;
+
+  if (GPIO_Pin == GPIO_PIN_4) { printf("k0, "); key = 0; }
+  else if (GPIO_Pin == GPIO_PIN_3) { printf("k1, "); key = 1; }
+  else if (GPIO_Pin == GPIO_PIN_2) { printf("k2, "); key = 2; }
+  else if (GPIO_Pin == GPIO_PIN_0) { printf("kup, "); key = 3; }
+
+  switch (currentState) {
+    case IDLE:
+      printf("IDLE\r\n");
+      if (key == 0) currentState = S0;
+      break;
+    case S0:
+      printf("S0\r\n");
+      if (key == 1) currentState = S1_1;
+      else if (key == 0) currentState = S0;
+      else currentState = IDLE;
+      break;
+    case S1_1:
+      printf("S1_1\r\n");
+      if (key == 1) currentState = S1_2;
+      else if (key == 0) currentState = S0;
+      else currentState = IDLE;
+      break;
+    case S1_2:
+      printf("S1_2\r\n");
+      if (key == 1) currentState = S1_3;
+      else if (key == 0) currentState = S0;
+      else currentState = IDLE;
+      break;
+    case S1_3:
+      printf("S1_3\r\n");
+      if (key == 2) currentState = S2_1;
+      else if (key == 0) currentState = S0;
+      else currentState = IDLE;
+      break;
+    case S2_1:
+      printf("S2_1\r\n");
+      if (key == 2) currentState = S2_2;
+      else if (key == 0) currentState = S0;
+      else currentState = IDLE;
+      break;
+    case S2_2:
+      printf("S2_2\r\n");
+      if (key == 3) {
+        HAL_GPIO_TogglePin(LED0_GPIO_Port, LED0_Pin);
+        currentState = IDLE;
+      } else if (key == 0) currentState = S0;
+      else currentState = IDLE;
+      break;
+  }
+}
 /* USER CODE END 4 */
 
 /**
