@@ -18,14 +18,12 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "dma.h"
-#include "usart.h"
+#include "cmsis_os.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
-#include <string.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -46,15 +44,12 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-#define BUFFER_SIZE 512
-uint8_t uart1_rx_buf[BUFFER_SIZE];
-uint8_t uart3_rx_buf[BUFFER_SIZE];
-volatile uint16_t uart1_rx_len = 0;
-volatile uint16_t uart3_rx_len = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+void MX_FREERTOS_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -93,55 +88,17 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
-  MX_USART1_UART_Init();
-  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
-  HAL_UART_Receive_DMA(&huart1, uart1_rx_buf, BUFFER_SIZE);
-  HAL_UART_Receive_DMA(&huart3, uart3_rx_buf, BUFFER_SIZE);
-  __HAL_UART_ENABLE_IT(&huart1, UART_IT_IDLE);
-  __HAL_UART_ENABLE_IT(&huart3, UART_IT_IDLE);
-  printf("ESP8266 Test Board Init OK\r\n");
-
-  printf("TEST: \r\n");
-  HAL_UART_Transmit(&huart3, (uint8_t*)"AT+CWMODE=1\r\n", 13, 100);
-  HAL_Delay(500);
-
-  HAL_UART_Transmit(&huart3, (uint8_t*)"AT+CWJAP=\"417\",\"123456789\"\r\n", strlen("AT+CWJAP=\"417\",\"123456789\"\r\n"), 100);
-  printf("Connecting WiFi...");
-  HAL_Delay(6000);
-
-  HAL_UART_Transmit(&huart3, (uint8_t*)"AT+CIPSTART=\"TCP\",\"192.168.0.147\",8080\r\n", 40, 100);
-  HAL_Delay(2000);
-
-  char http_payload[64];
-  sprintf(http_payload, "GET /api/hello HTTP/1.0\r\n\r\n");
-  uint16_t payload_len = strlen(http_payload); // 自动计算完美长度
-
-  char cipsend_cmd[32];
-  sprintf(cipsend_cmd, "AT+CIPSEND=%d\r\n", payload_len);
-  HAL_UART_Transmit(&huart3, (uint8_t*)cipsend_cmd, strlen(cipsend_cmd), 100);
-  HAL_Delay(200); // 等待模块返回 '>'
-
-  // 发送真正的 HTTP 请求流
-  HAL_UART_Transmit(&huart3, (uint8_t*)http_payload, payload_len, 500);
-
-  /* LLM generate 测试：在 hello 测试基础上增加 */
-  // printf("LLM Test: /api/llm/generate\r\n");
-  // HAL_Delay(5000);  // 等待 hello 响应完成 + LLM 推理耗时
-  //
-  // char llm_payload[128];
-  // sprintf(llm_payload, "GET /api/llm/generate?userInput=hello HTTP/1.0\r\n\r\n");
-  // uint16_t llm_payload_len = strlen(llm_payload);
-  //
-  // char llm_cipsend_cmd[32];
-  // sprintf(llm_cipsend_cmd, "AT+CIPSEND=%d\r\n", llm_payload_len);
-  // HAL_UART_Transmit(&huart3, (uint8_t*)llm_cipsend_cmd, strlen(llm_cipsend_cmd), 100);
-  // HAL_Delay(200);  // 等待模块返回 '>'
-  //
-  // HAL_UART_Transmit(&huart3, (uint8_t*)llm_payload, llm_payload_len, 5000);
 
   /* USER CODE END 2 */
+
+  /* Call init function for freertos objects (in cmsis_os2.c) */
+  MX_FREERTOS_Init();
+
+  /* Start scheduler */
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -150,27 +107,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    /* USART1 (电脑) -> USART3 (ESP8266): 末尾追加 \r\n 让 AT 命令能成行 */
-    if (uart1_rx_len > 0) {
-
-      if (uart1_rx_len < BUFFER_SIZE - 2) {
-        uart1_rx_buf[uart1_rx_len++] = '\r';
-        uart1_rx_buf[uart1_rx_len++] = '\n';
-      }
-      HAL_UART_Transmit(&huart3, uart1_rx_buf, uart1_rx_len, 100);
-      uart1_rx_len = 0;
-      HAL_UART_Receive_DMA(&huart1, uart1_rx_buf, BUFFER_SIZE);
-      __HAL_UART_ENABLE_IT(&huart1, UART_IT_IDLE);
-    }
-    /* USART3 (ESP8266) -> USART1 (电脑): ESP8266 响应已经是完整行 */
-    if (uart3_rx_len > 0) {
-      HAL_UART_Transmit(&huart1, uart3_rx_buf, uart3_rx_len, 100);
-      uart3_rx_len = 0;
-      HAL_UART_Receive_DMA(&huart3, uart3_rx_buf, BUFFER_SIZE);
-      __HAL_UART_ENABLE_IT(&huart3, UART_IT_IDLE);
-    }
-    /* USER CODE END 3 */
   }
+  /* USER CODE END 3 */
 }
 
 /**
@@ -222,6 +160,28 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
+
+/**
+  * @brief  Period elapsed callback in non blocking mode
+  * @note   This function is called  when TIM1 interrupt took place, inside
+  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+  * a global variable "uwTick" used as application time base.
+  * @param  htim : TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM1)
+  {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+
+  /* USER CODE END Callback 1 */
+}
 
 /**
   * @brief  This function is executed in case of error occurrence.

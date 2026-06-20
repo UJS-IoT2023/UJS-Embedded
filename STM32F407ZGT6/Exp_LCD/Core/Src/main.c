@@ -18,14 +18,13 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "dma.h"
-#include "usart.h"
 #include "gpio.h"
+#include "fsmc.h"
+#include "lcd.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
-#include <string.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -46,11 +45,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-#define BUFFER_SIZE 512
-uint8_t uart1_rx_buf[BUFFER_SIZE];
-uint8_t uart3_rx_buf[BUFFER_SIZE];
-volatile uint16_t uart1_rx_len = 0;
-volatile uint16_t uart3_rx_len = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -93,53 +88,28 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
-  MX_USART1_UART_Init();
-  MX_USART3_UART_Init();
+  MX_FSMC_Init();
   /* USER CODE BEGIN 2 */
-  HAL_UART_Receive_DMA(&huart1, uart1_rx_buf, BUFFER_SIZE);
-  HAL_UART_Receive_DMA(&huart3, uart3_rx_buf, BUFFER_SIZE);
-  __HAL_UART_ENABLE_IT(&huart1, UART_IT_IDLE);
-  __HAL_UART_ENABLE_IT(&huart3, UART_IT_IDLE);
-  printf("ESP8266 Test Board Init OK\r\n");
 
-  printf("TEST: \r\n");
-  HAL_UART_Transmit(&huart3, (uint8_t*)"AT+CWMODE=1\r\n", 13, 100);
-  HAL_Delay(500);
+  lcd_init();
+  lcd_clear(BLACK);
 
-  HAL_UART_Transmit(&huart3, (uint8_t*)"AT+CWJAP=\"417\",\"123456789\"\r\n", strlen("AT+CWJAP=\"417\",\"123456789\"\r\n"), 100);
-  printf("Connecting WiFi...");
-  HAL_Delay(6000);
+  g_point_color = WHITE;
+  g_back_color  = BLACK;
 
-  HAL_UART_Transmit(&huart3, (uint8_t*)"AT+CIPSTART=\"TCP\",\"192.168.0.147\",8080\r\n", 40, 100);
-  HAL_Delay(2000);
+  lcd_show_string(10,  10, 220, 16, 16,  "Exp_LCD Test",          WHITE);
+  lcd_show_string(10,  30, 220, 16, 16,  "Black BG / White FG",   WHITE);
 
-  char http_payload[64];
-  sprintf(http_payload, "GET /api/hello HTTP/1.0\r\n\r\n");
-  uint16_t payload_len = strlen(http_payload); // 自动计算完美长度
+  lcd_show_string(10,  60, 220, 12, 12,  "Size 12: The quick fox",WHITE);
+  lcd_show_string(10,  80, 220, 16, 16,  "Size 16: Hello, world!",WHITE);
+  lcd_show_string(10, 110, 220, 24, 24,  "Size 24: 12345",        WHITE);
+  lcd_show_string(10, 150, 220, 32, 32,  "Size 32",               WHITE);
 
-  char cipsend_cmd[32];
-  sprintf(cipsend_cmd, "AT+CIPSEND=%d\r\n", payload_len);
-  HAL_UART_Transmit(&huart3, (uint8_t*)cipsend_cmd, strlen(cipsend_cmd), 100);
-  HAL_Delay(200); // 等待模块返回 '>'
+  lcd_show_string(10, 200, 60, 16, 16, "Count:",  WHITE);
+  lcd_show_num(80, 200, 12345, 5, 16, WHITE);
 
-  // 发送真正的 HTTP 请求流
-  HAL_UART_Transmit(&huart3, (uint8_t*)http_payload, payload_len, 500);
-
-  /* LLM generate 测试：在 hello 测试基础上增加 */
-  // printf("LLM Test: /api/llm/generate\r\n");
-  // HAL_Delay(5000);  // 等待 hello 响应完成 + LLM 推理耗时
-  //
-  // char llm_payload[128];
-  // sprintf(llm_payload, "GET /api/llm/generate?userInput=hello HTTP/1.0\r\n\r\n");
-  // uint16_t llm_payload_len = strlen(llm_payload);
-  //
-  // char llm_cipsend_cmd[32];
-  // sprintf(llm_cipsend_cmd, "AT+CIPSEND=%d\r\n", llm_payload_len);
-  // HAL_UART_Transmit(&huart3, (uint8_t*)llm_cipsend_cmd, strlen(llm_cipsend_cmd), 100);
-  // HAL_Delay(200);  // 等待模块返回 '>'
-  //
-  // HAL_UART_Transmit(&huart3, (uint8_t*)llm_payload, llm_payload_len, 5000);
+  lcd_show_string(10, 230, 60, 16, 16, "Pad0:",  WHITE);
+  lcd_show_xnum(80, 230, 42, 6, 16, 0x80, WHITE);
 
   /* USER CODE END 2 */
 
@@ -150,27 +120,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    /* USART1 (电脑) -> USART3 (ESP8266): 末尾追加 \r\n 让 AT 命令能成行 */
-    if (uart1_rx_len > 0) {
-
-      if (uart1_rx_len < BUFFER_SIZE - 2) {
-        uart1_rx_buf[uart1_rx_len++] = '\r';
-        uart1_rx_buf[uart1_rx_len++] = '\n';
-      }
-      HAL_UART_Transmit(&huart3, uart1_rx_buf, uart1_rx_len, 100);
-      uart1_rx_len = 0;
-      HAL_UART_Receive_DMA(&huart1, uart1_rx_buf, BUFFER_SIZE);
-      __HAL_UART_ENABLE_IT(&huart1, UART_IT_IDLE);
-    }
-    /* USART3 (ESP8266) -> USART1 (电脑): ESP8266 响应已经是完整行 */
-    if (uart3_rx_len > 0) {
-      HAL_UART_Transmit(&huart1, uart3_rx_buf, uart3_rx_len, 100);
-      uart3_rx_len = 0;
-      HAL_UART_Receive_DMA(&huart3, uart3_rx_buf, BUFFER_SIZE);
-      __HAL_UART_ENABLE_IT(&huart3, UART_IT_IDLE);
-    }
-    /* USER CODE END 3 */
   }
+  /* USER CODE END 3 */
 }
 
 /**
@@ -220,6 +171,13 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+/* 桩函数: 让 lcd_init() 里的 printf 不再卡死.
+ * 后续若要启用 USART1 调试打印, 在此改为实际串口发送即可. */
+int __io_putchar(int ch)
+{
+  return ch;
+}
 
 /* USER CODE END 4 */
 
